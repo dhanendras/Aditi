@@ -1,0 +1,20 @@
+{
+  "name": "application-name",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "Apache",
+  "engines": {
+    "node": "~0.10.0 || ~4.2.0"
+  },
+  "dependencies": {
+    "bluebird": "^3.4.7",
+    "botbuilder": "^3.9.1",
+    "botbuilder-calling": "^3.0.1",
+    "dotenv-extended": "^1.0.4",
+    "request": "^2.81.0",
+    "restify": "^4.3.1"
+  }
+}
