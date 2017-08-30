@@ -1,12 +1,23 @@
 
-var builder = require('botbuilder');
 var restify = require('restify');
-var calling = require('botbuilder-calling');
-
+var builder = require('./core/');
+var calling = require('./calling/');
 var analyticsService = require('./models/text-analytics');
+var QnAClient = require('./client');
+const mysql = require('mysql2');
 
-var restify = require('restify');
 var port = process.env.PORT || 8080;
+var config =
+{
+    host: 'myserver4adithipro.mysql.database.azure.com',
+    user: 'adithi.pro@myserver4adithipro',
+    password: 'Bot@1234',
+    database: 'adithipro_db',
+    port: 3306,
+    ssl: true
+};
+
+const conn = new mysql.createConnection(config);
 
 function respond(req, res, next) {
   res.send('hello ' + req.params.name);
@@ -26,94 +37,86 @@ server.listen(port, function() {
 const LuisModelUrl = 'https://westus.api.cognitive.microsoft.com/luis/v2.0/apps/00075350-0d1e-4f2d-8f6e-75e253066b43?subscription-key=468963da9804413788459981febe3bb6&timezoneOffset=0&verbose=true&q= ';
 
 
+
+// Create bot
+
+
+// Create chat bot
+var chatConnector = new builder.ChatConnector({
+    appId: '9513ae39-73af-4ac0-bef8-d09c700976f4',
+    appPassword: 'VdEfTugEQTOpk7GGbgKdZZc'
+});
+var chatBot = new builder.UniversalBot(chatConnector);
+server.post('/api/messages', chatConnector.listen());
+
+// Create calling bot
+var connector = new calling.CallConnector({
+    callbackUrl: 'https://e02da6e7.ngrok.io/api/calls',
+    appId: '9513ae39-73af-4ac0-bef8-d09c700976f4',
+    appPassword: 'VdEfTugEQTOpk7GGbgKdZZc'
+});
+//var bot = new calling.UniversalCallBot(connector);
+var bot = new calling.UniversalCallBot(connector);
+
+server.post('/api/calls', connector.listen());
+
+
+var qnaClient = new QnAClient({
+    knowledgeBaseId: 'fe330b26-130f-4cba-b303-c4e3d509de94',
+    subscriptionKey: 'ce99e7727cad4a788f15ead7b57a01ab'
+    // Optional field: Score threshold
+});
+
+
 //luis intent recogniser
+/*
 const intent = new builder.IntentDialog({
     recognizers: [
         new builder.LuisRecognizer(LuisModelUrl)
     ]
 });
-// Create bot
 
-var connector = new calling.CallConnector({
-    appId: '95a0a3f3-0616-4339-b161-1555e6784b4c',
-    appPassword: '8XjAupopDJzuiEHzqNbpdOV'
-});
-server.post('/api/calls', connector.listen());
-var bot = new calling.UniversalCallBot(connector);
-
-// Add root dialog
-bot.dialog('/', function (session) {
-    session.send('Watson... come here!');
-});
 /*
 var bot = new builder.UniversalBot(connector, function (session) {
     session.send('Sorry, I did not understand \'%s\'. Type \'help\' if you need assistance.', session.message.text);
 });
+
 */
-/*
-var bot = new calling.UniversalCallBot(connector,[
 
-    function(session,next){
-        session.beginDialog('greet');
-    },
-    function(session,results){
-        session.beginDialog('ezone');
-    },
-    function(session,results){
-        builder.Prompts.text(session,'Are we good to continue with the demonstration of <Asset>?');
-    },
-    function(session,results,next){
-        var responseOne = session.message.text;
-        builder.LuisRecognizer.recognize(responseOne, LuisModelUrl, function (err, intents, entities) {
-            var result = {};
-            result.intents = intents;
-            result.entities = entities;
-            if (intents[0].intent=='yes') {
-                    session.beginDialog('demo');
-                } else {
-                    session.send('Is there some issue?');
-                    session.beginDialog('error');
-                } 
-            
-            })     
-    
-    },
-    function(session,results){
-        session.beginDialog('anyQuestions');
-    },
-    function(session){
-        session.beginDialog('moreQuestions');
-    },
-    function(session){
-        session.beginDialog('feedback');
-    },
-    function(session){
-        session.send('Thank you for the visit <Guest>!');
-        session.endConversation();
-    }
-]);
+//=========================================================
+// Chat Dialogs
+//=========================================================
 
-bot.on('conversationUpdate', function (message) {
-    if (message.membersAdded) {
-        message.membersAdded.forEach(function (identity) {
-            if (identity.id === message.address.bot.id) {
-                bot.beginDialog(message.address, '/');
-            }
-        });
-    }
+chatBot.dialog('/', function (session) {
+    session.send(prompts.chatGreeting); 
 });
 
-bot.recognizer(new builder.LuisRecognizer(LuisModelUrl));  
 
 
-//Greet
+
+//=========================================================
+// Calling Dialogs
+//=========================================================
+
+bot.dialog('/', [
+    function (session) {
+        // Send a greeting and start the menu.
+                session.beginDialog('greet');
+
+    },
+    function (session, results) {
+        // Always say goodbye
+        session.send(prompts.goodbye);
+    }
+]);
 
 bot.dialog('greet',[
     function(session,next){
         session.send('Hello <Guest>.  Welcome to Infinity Labs, the place where we collaborate and co create innovative technology enabled solutions for our customers. My name is Aditi and I\'ll be your guide throughout this tour' );
-        builder.Prompts.text(session,'How was your day so far?');
+        calling.Prompts.confirm(session, 'How was your day so far?');        
+
     },
-    function (session, results, next) {
+    function (session, results,next) {
 
         analyticsService.getScore(results.response).then(score => {
             
@@ -133,15 +136,19 @@ bot.dialog('greet',[
                     }
 
                 }
+					else{
+					 session.send('Okay,anyways let us move on then');
+					 next();
+					}
         })
             
     },
-    function(session,results){
-        builder.Prompts.text(session,'Let me know when you are settled.');
+    function(session,results,next){
+        calling.Prompts.confirm(session,'Let me know when you are settled.');
         
     },
     function(session,results){
-        builder.Prompts.text(session,'Today we are planning to showcase our Innovation Labs ecosystem followed by demonstration of <Asset> for you. Hope you are good with the plan.');
+        calling.Prompts.confirm(session,'Today we are planning to showcase our Innovation Labs ecosystem followed by demonstration of <Asset> for you. Hope you are good with the plan.');
     },
     function(session,results,args,next){
         var responseTwo = session.message.text;
@@ -161,8 +168,8 @@ bot.dialog('greet',[
         })
     }]);
 
-//ezone
-
+	
+	
 bot.dialog('ezone',[
 
     function(session,results,next){
@@ -184,7 +191,7 @@ bot.dialog('ezone',[
 
 bot.dialog('anyQuestions',[
     function(session){
-        builder.Prompts.text(session,'Do you have any questions?');
+        calling.Prompts.confirm(session,'Do you have any questions?');
     },
     function(session,results,args,next){
         var responseThree = session.message.text;
@@ -206,17 +213,17 @@ bot.dialog('anyQuestions',[
 
 bot.dialog('question',[
     function(session,results){
-        builder.Prompts.text(session,'You seem to have a question. Please fire away');
+        calling.Prompts.confirm(session,'You seem to have a question. Please fire away');
         ////var question = session.message.text;
         // add question to DB
     },
     function(session,results,next){
         session.send('Gokul would be able to explain you in detail');
-        builder.Prompts.text(session,'Gokul, please let me know when you are done');
+        calling.Prompts.confirm(session,'Gokul, please let me know when you are done');
     },
     function(session,results){
         //wait
-        builder.Prompts.text(session,'Did that answer your question?');    
+        calling.Prompts.confirm(session,'Did that answer your question?');    
     },
     function(session,results,args,next){
         var responseThree = session.message.text;
@@ -233,16 +240,16 @@ bot.dialog('question',[
             
             })
     }   
-]).triggerAction({
+])/*.triggerAction({
     matches : 'question',
     onSelectAction : (session,args,next) => {
         session.beginDialog(args,action, args);
     }
-});
+})*/;
 
 bot.dialog('moreQuestions',[
     function(session,args,next){
-        builder.Prompts.text(session,'Do you have any more questions on this topic?');
+        calling.Prompts.confirm(session,'Do you have any more questions on this topic?');
     },
     function(session,results){
         var responseFour = session.message.text;
@@ -271,7 +278,7 @@ bot.dialog('moreQuestions',[
 bot.dialog('feedback',[
     function(session){
         session.send('That marks the end of this session');
-        builder.Prompts.text(session, 'How was it? We appreciate a candid respone!');
+        calling.Prompts.confirm(session, 'How was it? We appreciate a candid respone!');
     },
     function (session, results, next) {
 
@@ -319,7 +326,7 @@ bot.dialog('demo',[
         session.send('Fortscale is not just rules-engine. It has been designed from the ground up as a machine learning system that uses advanced computing and mathematics to detect abnormal account behavior indicative of credential compromise or abuse.');
         session.send('<Slides not added>');
         session.send('<POC> and team would take over now');
-        builder.Prompts.text(session,'<POC>, please let me know when you are done');
+        calling.Prompts.confirm(session,'<POC>, please let me know when you are done');
     },
     function(session,results){
         session.endDialog();
@@ -339,4 +346,3 @@ bot.dialog('error',[
         session.endConversation();
     }
 ])
-*/
